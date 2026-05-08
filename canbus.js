@@ -94,6 +94,10 @@ class CanBusService extends EventEmitter {
             this.emit('can_status', true, `CAN device connected (${this.connectedDeviceName}).`);
 
 
+            if (typeof this.canDevice.removeAllListeners === 'function') {
+                this.canDevice.removeAllListeners('frame');
+                this.canDevice.removeAllListeners('error');
+            }
             this.canDevice.on('frame', (frame) => this._handleFrameReceived(frame));
             this.canDevice.on('error', (err) => this._handleCanError(err));
 
@@ -575,13 +579,13 @@ class CanBusService extends EventEmitter {
         bafangSerializer.prepareSpeedPackageWriteData(this, mergedSpeedParams);
     }
 
-    async saveDisplayTotalMileage(mileage) { bafangSerializer.prepareTotalMileageWriteData(this, mileage); }
-    async saveDisplaySingleMileage(mileage) { bafangSerializer.prepareSingleMileageWriteData(this, mileage); }
-    async saveDisplayTime(hours, minutes, seconds) { bafangSerializer.prepareTimeWriteData(this, hours, minutes, seconds); }
-	async setDisplayServiceThreshold(thresholdKm) {bafangSerializer.prepareSetServiceThresholdWriteData(this, thresholdKm); }
-    async cleanDisplayServiceMileage() { bafangSerializer.prepareCleanServiceMileageWriteData(this); }
-    async saveStringParameter(targetDeviceId, commandInfo, value) { bafangSerializer.prepareStringWriteData(this, value, targetDeviceId, commandInfo); }
-    async saveControllerStartupAngle(angle) {bafangSerializer.prepareStartupAngleWriteData(this, angle); }
+    async saveDisplayTotalMileage(mileage) { return bafangSerializer.prepareTotalMileageWriteData(this, mileage); }
+    async saveDisplaySingleMileage(mileage) { return bafangSerializer.prepareSingleMileageWriteData(this, mileage); }
+    async saveDisplayTime(hours, minutes, seconds) { return bafangSerializer.prepareTimeWriteData(this, hours, minutes, seconds); }
+	async setDisplayServiceThreshold(thresholdKm) { return bafangSerializer.prepareSetServiceThresholdWriteData(this, thresholdKm); }
+    async cleanDisplayServiceMileage() { return bafangSerializer.prepareCleanServiceMileageWriteData(this); }
+    async saveStringParameter(targetDeviceId, commandInfo, value) { return bafangSerializer.prepareStringWriteData(this, value, targetDeviceId, commandInfo); }
+    async saveControllerStartupAngle(angle) { return bafangSerializer.prepareStartupAngleWriteData(this, angle); }
 
  
      
@@ -670,6 +674,10 @@ class CanBusService extends EventEmitter {
             }
             if (this.canDevice.gs_usb) { // Check if gs_usb (the usb.Device object) exists
                 await this.canDevice.stop(); // This calls _disableCanHardware and then gs_usb.close()
+            }
+            if (typeof this.canDevice.removeAllListeners === 'function') {
+                this.canDevice.removeAllListeners('frame');
+                this.canDevice.removeAllListeners('error');
             }
             this.isStarted = false;
             this.connectedDeviceName = null; // Clear the name on successful close

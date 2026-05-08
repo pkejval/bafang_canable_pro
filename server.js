@@ -438,12 +438,13 @@ const wss = new WebSocket.Server({ server });
 		return true;
 	}
 
-	async function handleDisplaySpecificWrites(ws, messageString) {
+	async function handleDisplaySpecificWrites(ws, messageString, sendResult) {
 		if (messageString.startsWith('WRITE_DISP_TOTAL_MILEAGE:')) {
 			const value = parseFloat(messageString.substring('WRITE_DISP_TOTAL_MILEAGE:'.length));
 			if (!isNaN(value)) {
 				ws.send(`INFO: Initiating Write Total Mileage to Display (No ACK Tracked by UI)...`);
-				await canbus.saveDisplayTotalMileage(value); ws.send(`INFO: Total Mileage write sequence sent.`);
+				const result = await canbus.saveDisplayTotalMileage(value);
+				sendResult('Write Total Mileage', result);
 			} else { ws.send('ERROR: Invalid mileage value.'); }
 			return true;
 		}
@@ -451,8 +452,19 @@ const wss = new WebSocket.Server({ server });
 			const value = parseFloat(messageString.substring('WRITE_DISP_SINGLE_MILEAGE:'.length));
 			if (!isNaN(value)) {
 				ws.send(`INFO: Initiating Write Single Mileage to Display (No ACK Tracked by UI)...`);
-				await canbus.saveDisplaySingleMileage(value); ws.send(`INFO: Single Mileage write sequence sent.`);
+				const result = await canbus.saveDisplaySingleMileage(value);
+				sendResult('Write Single Mileage', result);
 			} else { ws.send('ERROR: Invalid mileage value.'); }
+			return true;
+		}
+		if (messageString.startsWith('WRITE_DISP_TIME:')) {
+			const valueStr = messageString.substring('WRITE_DISP_TIME:'.length);
+			const parts = valueStr.split(',').map(part => parseInt(part, 10));
+			if (parts.length === 3 && parts.every(n => !isNaN(n))) {
+				ws.send(`INFO: Initiating Write Display Time (${parts.join(':')})...`);
+				const result = await canbus.saveDisplayTime(parts[0], parts[1], parts[2]);
+				sendResult('Write Display Time', result);
+			} else { ws.send(`ERROR: Invalid time format for WRITE_DISP_TIME: ${valueStr}`); }
 			return true;
 		}
 		if (messageString.startsWith('SET_AND_CLEAN_SERVICE_MILEAGE:')) {
@@ -462,7 +474,7 @@ const wss = new WebSocket.Server({ server });
 
             if (isNaN(thresholdKm) || thresholdKm < 0) {
                 ws.send('ERROR: Invalid threshold value for service mileage. Must be a non-negative number.');
-                return;
+                return true;
             }
 
             ws.send(`INFO: Setting service threshold to ${thresholdKm}km and then clearing current service counter...`);
@@ -470,17 +482,17 @@ const wss = new WebSocket.Server({ server });
             try {
 
                 const setResult = await canbus.setDisplayServiceThreshold(thresholdKm);
-                if (!setResult || !setResult.success) {
-                    sendResult(`SetServiceThreshold (${thresholdKm}km)`, setResult || { success: false, error: "Failed to set threshold." });
-                    return; // Stop if setting threshold fails
-                }
+				if (!setResult || !setResult.success) {
+					sendResult(`SetServiceThreshold (${thresholdKm}km)`, setResult || { success: false, error: "Failed to set threshold." });
+					return; // Stop if setting threshold fails
+				}
                 ws.send(`ACK: Service threshold set to ${thresholdKm}km.`);
                 
 				await new Promise(resolve => setTimeout(resolve, 200)); 
 
                 // Step 2: Clear the current service counter
-                const cleanResult = await canbus.cleanDisplayServiceMileage();
-                sendResult('CleanServiceMileage', cleanResult);
+				const cleanResult = await canbus.cleanDisplayServiceMileage();
+				sendResult('CleanServiceMileage', cleanResult);
 
             } catch (e) {
                 console.error('Error during set/clear service mileage:', e);
@@ -509,7 +521,8 @@ const wss = new WebSocket.Server({ server });
 			const angle = parseInt(valueStr, 10);
 			if (!isNaN(angle)) {
 				ws.send(`INFO: Initiating Write Startup Angle (${angle}) to Controller (No ACK Tracked by UI)...`);
-				await canbus.saveControllerStartupAngle(angle); ws.send(`INFO: Startup Angle write command sent.`);
+				const result = await canbus.saveControllerStartupAngle(angle);
+				sendResult(`Write Startup Angle`, result);
 			} else { ws.send(`ERROR: Invalid angle value for WRITE_STARTUP_ANGLE: ${valueStr}`); }
 			return true;
 		}
@@ -573,7 +586,7 @@ const wss = new WebSocket.Server({ server });
 				if (!handled) handled = await handleWriteLongParsedParams(ws, messageString);
 				if (!handled) handled = await handleWriteLongSpeedParams(ws, messageString);
 				if (!handled) handled = await handleWriteLongStringParams(ws, messageString);
-				if (!handled) handled = await handleDisplaySpecificWrites(ws, messageString);
+				if (!handled) handled = await handleDisplaySpecificWrites(ws, messageString, sendResult);
 				if (!handled) handled = await handleStartupAngleCommands(ws, messageString, sendResult);
 				if (!handled) handled = await handleRawCanFrame(ws, messageString);
 

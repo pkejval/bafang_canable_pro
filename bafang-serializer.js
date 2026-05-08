@@ -49,19 +49,18 @@ function writeShortParameter(canbusInstance, target, can_command, data) {
         const commandString = `${canId32bit.toString(16).padStart(8, '0')}#${dataHex}`; // Pad ID to 8 chars
 
         // Send the frame using the canbusInstance's method
-        canbusInstance.sendFrame(commandString)
+        return canbusInstance.sendFrame(commandString)
             .then(sent => {
                 if (!sent) {
                      console.error(`[Serializer] canbus.sendFrame failed for Short Write: ID=0x${canId32bit.toString(16)}`);
-                     // Optionally emit an error here if sendFrame indicates immediate failure
-                     // canbusInstance.emit('can_error', `Send failed (short): Cmd ${can_command.canCommandCode}/${can_command.canCommandSubCode}`);
-                } else {
-                     // console.log(`[Serializer] Queued Short Write: ID=0x${canId32bit.toString(16)} DLC=${data.length}`);
+                     return { success: false, error: 'Failed to send frame', timedOut: false };
                 }
+                return { success: true, error: null, timedOut: false };
             })
             .catch(err => { // Catch potential errors from the sendFrame promise itself
                  console.error(`[Serializer] Error during sendFrame call (Short Write):`, err);
                  canbusInstance.emit('can_error', `Send error (short): ${err.message} (Cmd ${can_command.canCommandCode}/${can_command.canCommandSubCode})`);
+                 return { success: false, error: err.message, timedOut: false };
             });
 
     } catch (error) {
@@ -79,15 +78,15 @@ function writeShortParameter(canbusInstance, target, can_command, data) {
  * @param {number[]} value - The full data payload bytes (can be > 8 bytes).
  */
 async function writeLongParameter(canbusInstance, target, can_command, value) {
-     if (!canbusInstance || !canbusInstance.isConnected()) {
+    if (!canbusInstance || !canbusInstance.isConnected()) {
         console.warn(`[Serializer] Attempted writeLongParameter (Cmd ${can_command.canCommandCode}/${can_command.canCommandSubCode}) while disconnected.`);
         canbusInstance.emit('can_error', `Write attempt failed: Disconnected (Cmd ${can_command.canCommandCode}/${can_command.canCommandSubCode})`);
-        return;
+        return false;
     }
-     if (!Array.isArray(value)) {
+    if (!Array.isArray(value)) {
         console.error(`[Serializer] Invalid data for writeLongParameter (Cmd ${can_command.canCommandCode}/${can_command.canCommandSubCode}): Not an array.`);
         canbusInstance.emit('can_error', `Invalid data type for long write (Cmd ${can_command.canCommandCode}/${can_command.canCommandSubCode})`);
-        return;
+        return false;
      }
 
     try {
@@ -144,13 +143,13 @@ async function writeLongParameter(canbusInstance, target, can_command, value) {
         const endData = arrayClone; // Remaining data (<= 8 bytes)
         await sendMfFrame(endIdArr, endData);
         console.log(`[Serializer] Sent MF End ${packages}: ID=0x${bafangIdArrayTo32Bit(endIdArr).toString(16)}`);
+        return true;
 
     } catch (error) {
         // Error should have been logged by sendMfFrame or caught here if preparation fails
         console.error(`[Serializer] Error during writeLongParameter sequence (Cmd ${can_command.canCommandCode}/${can_command.canCommandSubCode}):`, error);
         canbusInstance.emit('can_error', `Error sending long write: ${error.message} (Cmd ${can_command.canCommandCode}/${can_command.canCommandSubCode})`);
-        // Optionally re-throw if the caller needs to know about the failure immediately
-        // throw error;
+        return false;
     }
 }
 
@@ -477,7 +476,7 @@ function prepareStartupAngleWriteData(canbusInstance, angleValue) {
 
         // This is a short write command (2 bytes payload)
         // Using fire-and-forget version for consistency with other custom writes here
-        writeShortParameter(canbusInstance, target, can_command, data);
+        return writeShortParameter(canbusInstance, target, can_command, data);
 
     } catch (e) {
         console.error("[Serializer] Error preparing Startup Angle write data:", e, angleValue);
@@ -508,12 +507,12 @@ function prepareSetServiceThresholdWriteData(canbusInstance, thresholdKm) {
     while(data.length < 4) data.push(0x00);
 
     console.warn("[Serializer] Using fire-and-forget for SetServiceThreshold. ACK tracking might be separate.");
-    bafangSerializer.writeShortParameter( // Assuming this exists in bafangSerializer
+    return writeShortParameter(
         canbusInstance,
         DeviceNetworkId.DISPLAY,
         CanWriteCommandsList.SetServiceThreshold,
         data.slice(0, 4)
-        );
+    );
 }
 
 function serializeMileage(mileage) {
@@ -527,7 +526,7 @@ function prepareTotalMileageWriteData(canbusInstance, value) {
         return;
     }
     const data = serializeMileage(value);
-    writeShortParameter(canbusInstance, DeviceNetworkId.DISPLAY, CanWriteCommandsList.DisplayTotalMileage, data);
+    return writeShortParameter(canbusInstance, DeviceNetworkId.DISPLAY, CanWriteCommandsList.DisplayTotalMileage, data);
 }
 
 function prepareSingleMileageWriteData(canbusInstance, value) {
@@ -537,7 +536,7 @@ function prepareSingleMileageWriteData(canbusInstance, value) {
     }
     // Single mileage is stored scaled by 10
     const data = serializeMileage(value * 10);
-    writeShortParameter(canbusInstance, DeviceNetworkId.DISPLAY, CanWriteCommandsList.DisplaySingleMileage, data);
+    return writeShortParameter(canbusInstance, DeviceNetworkId.DISPLAY, CanWriteCommandsList.DisplaySingleMileage, data);
 }
 
 // For writing Display Time
@@ -553,14 +552,14 @@ function prepareTimeWriteData(canbusInstance, hours, minutes, seconds) {
          return;
      }
      const data = [hours, minutes, seconds]; // Simple 3-byte payload
-     writeShortParameter(canbusInstance, DeviceNetworkId.DISPLAY, CanWriteCommandsList.DisplayTime, data);
+      return writeShortParameter(canbusInstance, DeviceNetworkId.DISPLAY, CanWriteCommandsList.DisplayTime, data);
 }
 
 
 function prepareCleanServiceMileageWriteData(canbusInstance) {
      // This command usually sends dummy data (e.g., 5 zero bytes)
      const data = [0x00, 0x00, 0x00, 0x00, 0x00];
-     writeShortParameter(canbusInstance, DeviceNetworkId.DISPLAY, CanWriteCommandsList.CleanServiceMileage, data);
+     return writeShortParameter(canbusInstance, DeviceNetworkId.DISPLAY, CanWriteCommandsList.CleanServiceMileage, data);
 }
 
 // --- Exports ---

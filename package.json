@@ -7,5 +7,10 @@
     "candlelightjs": "github:ieb/candleLightJS",
     "usb": "^2.11.0",
     "ws": "^8.18.1"
+  },
+  "pkg": {
+    "assets": [
+      "ui/**/*"
+    ]
   }
 }

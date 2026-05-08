@@ -230,7 +230,7 @@
         let batteryCapacity = null, batteryState = null, batteryCells = {}, batteryOtherInfo = { hwVersion: null, swVersion: null, modelNumber: null, serialNumber: null };
         // Controller specific stores
         let controllerRealtime0 = null, controllerRealtime1 = null; 
-		let controllerParams0 = null; controllerParams1 = null, controllerParams2 = null, controllerSpeedParams = null;
+		let controllerParams0 = null, controllerParams1 = null, controllerParams2 = null, controllerSpeedParams = null;
         let controllerOtherInfo = { hwVersion: null, swVersion: null, modelNumber: null, serialNumber: null, manufacturer: null };
 		let displayShutdownTime = null; // <-- Add storage for shutdown time
 		

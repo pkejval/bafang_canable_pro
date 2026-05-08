@@ -99,17 +99,18 @@ class RequestManager {
 
             // Calculate required delay
             let requiredDelay = DEFAULT_SEND_INTERVAL;
-           // if (code === 0x60) { // Special delay for command 0x60 as per author
+            // if (code === 0x60) { // Special delay for command 0x60 as per author
                 const calculatedDelay = 50 * (subcode % 5); // Example: 50ms base * (subcode mod 5)
                 requiredDelay = Math.max(DEFAULT_SEND_INTERVAL, calculatedDelay); // Use calculated or default, whichever is larger
-           // }
+            // }
+            const elapsedSinceLastSend = now - this.lastSentTimestamp;
 
-            if (now - this.lastSentTimestamp >= requiredDelay) {
+            if (elapsedSinceLastSend >= requiredDelay) {
                 // --- Send the request ---
                 this.requestQueue.shift(); // Remove from queue *before* sending
                 this.lastSentTimestamp = now; // Update timestamp *before* async send
 
-                console.log(`[RequestManager] Dequeuing & Sending: Tgt=0x${target.toString(16)}, Cmd=0x${code.toString(16)}, Sub=0x${subcode.toString(16)}, Attempt=${attempt}, Delay=${now - this.lastSentTimestamp}ms (Req: ${requiredDelay}ms)`);
+                console.log(`[RequestManager] Dequeuing & Sending: Tgt=0x${target.toString(16)}, Cmd=0x${code.toString(16)}, Sub=0x${subcode.toString(16)}, Attempt=${attempt}, Delay=${elapsedSinceLastSend}ms (Req: ${requiredDelay}ms)`);
 
                 const bafangIdArr = generateCanFrameId(source, target, operation, code, subcode);
                 const canId32bit = bafangIdArrayTo32Bit(bafangIdArr);

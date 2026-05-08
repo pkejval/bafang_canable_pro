@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare commit list
+    runs-on: ubuntu-latest
+    outputs:
+      commits: ${{ steps.commits.outputs.commits }}
+
+    steps:
+      - name: Collect commits from the push
+        id: commits
+        shell: bash
+        env:
+          PUSH_COMMITS: ${{ toJson(github.event.commits) }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = process.env.PUSH_COMMITS;
+          const commits = raw && raw !== 'null' ? JSON.parse(raw) : [];
+          const shas = [...new Set(commits.map((commit) => commit.id).filter(Boolean))];
+
+          if (shas.length === 0) {
+            shas.push(process.env.CURRENT_SHA);
+          }
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `commits=${JSON.stringify(shas)}\n`);
+          NODE
+
+  build:
+    name: Build ${{ matrix.os }} for ${{ matrix.commit }}
+    runs-on: ${{ matrix.os }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        commit: ${{ fromJson(needs.prepare.outputs.commits) }}
+        include:
+          - os: ubuntu-latest
+            target: node20-linux-x64
+            binary: bafang-canable
+            artifact_suffix: linux
+          - os: windows-latest
+            target: node20-win-x64
+            binary: bafang-canable.exe
+            artifact_suffix: windows
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create output directory
+        env:
+          DIST_DIR: dist/${{ matrix.commit }}
+        run: node -e "require('fs').mkdirSync(process.env.DIST_DIR, { recursive: true })"
+
+      - name: Build executable
+        run: npx --yes @yao-pkg/pkg@latest server.js --targets ${{ matrix.target }} --output dist/${{ matrix.commit }}/${{ matrix.binary }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bafang-canable-${{ matrix.commit }}-${{ matrix.artifact_suffix }}
+          path: dist/${{ matrix.commit }}/${{ matrix.binary }}
+          if-no-files-found: error
+
+  release:
+    name: Publish release for ${{ matrix.commit }}
+    runs-on: ubuntu-latest
+    needs: [prepare, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        commit: ${{ fromJson(needs.prepare.outputs.commits) }}
+
+    steps:
+      - name: Download artifacts for this commit
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bafang-canable-${{ matrix.commit }}-*
+          merge-multiple: true
+          path: dist/${{ matrix.commit }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: master-${{ matrix.commit }}
+          name: Release ${{ matrix.commit }}
+          target_commitish: ${{ matrix.commit }}
+          generate_release_notes: true
+          overwrite_files: true
+          files: |
+            dist/${{ matrix.commit }}/*

@@ -112,28 +112,42 @@ async function writeLongParameter(canbusInstance, requestManagerInstance, target
       // Keep calling the low-level serializer which sends multiple frames
       // but register only ONCE for the final ACK.
       return new Promise(async (resolve, reject) => {
-         try {
+          try {
             if (!canbusInstance.isConnected()) {
                  return resolve({ success: false, error: 'CAN device not connected', timedOut: false });
             }
-            const source = DeviceNetworkId.BESST;
-            const code = can_command.canCommandCode;
-            const subcode = can_command.canCommandSubCode;
+             const source = DeviceNetworkId.BESST;
+             const code = can_command.canCommandCode;
+             const subcode = can_command.canCommandSubCode;
 
-            // Await the completion of sending *all* multi-frame packets via serializer
-            // Import the low-level function directly here or keep it in bafang-serializer
-            const { writeLongParameter: lowLevelWriteLong } = require('./bafang-serializer');
-            await lowLevelWriteLong(canbusInstance, target, can_command, value);
+             requestManagerInstance.registerForAck(source, target, CanOperation.WRITE_CMD, code, subcode, { resolve, reject });
 
-            // Register for the final ACK *after* all frames have been sent
-            requestManagerInstance.registerForAck(source, target, CanOperation.WRITE_CMD, code, subcode, { resolve, reject });
+             // Await the completion of sending *all* multi-frame packets via serializer
+             // Import the low-level function directly here or keep it in bafang-serializer
+             const { writeLongParameter: lowLevelWriteLong } = require('./bafang-serializer');
+             const sendOk = await lowLevelWriteLong(canbusInstance, target, can_command, value);
+             if (!sendOk) {
+                 requestManagerInstance.resolveRequest({
+                     sourceDeviceCode: target,
+                     canCommandCode: code,
+                     canCommandSubCode: subcode,
+                     canOperationCode: CanOperation.ERROR_ACK,
+                     data: []
+                 });
+             }
 
-         } catch (error) {
-             console.error("Error sending writeLongParameter sequence:", error);
-             // Ensure promise resolves even if sending fails before registration
-             resolve({ success: false, error: `Send error: ${error.message}`, timedOut: false });
-         }
-    });
+          } catch (error) {
+              console.error("Error sending writeLongParameter sequence:", error);
+              requestManagerInstance.resolveRequest({
+                  sourceDeviceCode: target,
+                  canCommandCode: can_command.canCommandCode,
+                  canCommandSubCode: can_command.canCommandSubCode,
+                  canOperationCode: CanOperation.ERROR_ACK,
+                  data: []
+              });
+              resolve({ success: false, error: `Send error: ${error.message}`, timedOut: false });
+          }
+     });
 }
 
 
