@@ -9,6 +9,60 @@
         const tabContents = document.querySelectorAll('.tab-content');
         const connectCanButton = document.getElementById('connectCanButton'); // New button
         const canDeviceNameElement = document.getElementById('canDeviceName'); // For device name	
+
+        // Reflow dense tabs into a two-column layout on wide screens.
+        // Sections stay in order, but longer tabs use the available width better.
+        const makeTwoColumnTabs = () => {
+            tabContents.forEach((tabContent) => {
+                if (tabContent.dataset.columnsBuilt === 'true') return;
+
+                const children = Array.from(tabContent.children);
+                const keepFullWidth = (el) => el.matches('h2, .general-controls');
+
+                const preserved = [];
+                const sections = [];
+                let currentSection = null;
+
+                children.forEach((el) => {
+                    if (keepFullWidth(el)) {
+                        preserved.push(el);
+                        return;
+                    }
+
+                    if (el.matches('h3, .settings-section, .card, .custom-frame-controls')) {
+                        if (currentSection && currentSection.childNodes.length) {
+                            sections.push(currentSection);
+                        }
+                        currentSection = document.createElement('div');
+                        currentSection.className = 'tab-section';
+                        currentSection.appendChild(el);
+                        return;
+                    }
+
+                    if (!currentSection) {
+                        currentSection = document.createElement('div');
+                        currentSection.className = 'tab-section';
+                    }
+
+                    currentSection.appendChild(el);
+                });
+
+                if (currentSection && currentSection.childNodes.length) {
+                    sections.push(currentSection);
+                }
+
+                if (!sections.length) return;
+
+                const columns = document.createElement('div');
+                columns.className = 'tab-columns';
+                sections.forEach((section) => columns.appendChild(section));
+
+                tabContent.replaceChildren(...preserved, columns);
+                tabContent.dataset.columnsBuilt = 'true';
+            });
+        };
+
+        makeTwoColumnTabs();
 		
         // --- Display Tab Specific Elements ---
         const displayElements = {

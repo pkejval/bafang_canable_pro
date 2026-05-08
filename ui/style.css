@@ -1,5 +1,5 @@
-body { font-family: Arial, sans-serif; padding: 15px; max-width: 850px; margin: 0 auto; font-size: 14px; background-color: #f4f4f4; }
-.container { display: flex; flex-direction: column; gap: 15px; }
+body { font-family: Arial, sans-serif; padding: 15px; margin: 0; font-size: 14px; background-color: #f4f4f4; }
+.container { display: flex; flex-direction: column; gap: 15px; width: min(100%, 1680px); margin: 0 auto; }
 .card { border: 1px solid #ccc; padding: 15px; border-radius: 8px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .card h2, .card h3 { margin-top: 10px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #eee; color: #333; }
 .status { display: flex; align-items: center; gap: 10px; }
@@ -27,6 +27,8 @@ textarea { width: calc(100% - 16px); min-height: 80px; font-family: monospace; m
 .tab-button.active { background-color: #fff; border-color: #ccc #ccc #fff; color: #007bff; }
 .tab-content { display: none; padding-top: 10px; }
 .tab-content.active { display: block; }
+.tab-columns { display: grid; grid-template-columns: 1fr; gap: 15px; }
+.tab-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .description-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; table-layout: fixed; }
 .description-table th, .description-table td { border: 1px solid #dee2e6; padding: 8px 10px; text-align: left; vertical-align: top; word-wrap: break-word; }
 .description-table th { background-color: #f8f9fa; font-weight: bold; width: 35%; }
@@ -101,8 +103,8 @@ textarea { width: calc(100% - 16px); min-height: 80px; font-family: monospace; m
 }
 
 .chart-placeholder {
-    width: 90%;
-    max-width: 600px;
+    width: 100%;
+    max-width: none;
     height: 300px; /* Same height as your chart container */
     margin: 20px auto;
     padding: 20px;
@@ -117,8 +119,8 @@ textarea { width: calc(100% - 16px); min-height: 80px; font-family: monospace; m
 }
 
 .chart-container {
-    width: 90%;
-    max-width: 600px;
+    width: 100%;
+    max-width: none;
     height: 300px;
     margin: 20px auto;
     padding: 10px;
@@ -142,7 +144,7 @@ textarea { width: calc(100% - 16px); min-height: 80px; font-family: monospace; m
     border: 1px solid #ccc;
 }
 
-hex-editor-container {
+.hex-editor-container {
     overflow-x: auto; /* Allow horizontal scrolling if table is too wide */
     /* --- NEW: Add top and bottom margin for more viewport space --- */
     margin-top: 50px;    /* Adds 50px space above the table */
@@ -151,6 +153,23 @@ hex-editor-container {
     padding-top: 50px;
     padding-bottom: 50px;
     */
+}
+
+@media (max-width: 900px) {
+    .container {
+        width: 100%;
+    }
+
+    .tab-buttons {
+        flex-wrap: wrap;
+    }
+}
+
+@media (min-width: 1200px) {
+    .tab-columns {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
+    }
 }
 
 #hexEditorTable {
