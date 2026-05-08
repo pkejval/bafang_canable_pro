@@ -10,7 +10,8 @@
   },
   "pkg": {
     "assets": [
-      "ui/**/*"
+      "ui/**/*",
+      "node_modules/usb/**/*"
     ]
   }
 }
