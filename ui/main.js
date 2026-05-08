@@ -3,11 +3,12 @@
         const statusIndicator = document.getElementById('statusIndicator');
         const statusText = document.getElementById('statusText');
         const log = document.getElementById('log');
-        //const allControls = document.querySelectorAll('button, input, textarea');
+        const allControls = document.querySelectorAll('button, input, select, textarea');
         const clearLogButton = document.getElementById('clearLogButton');
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');
         const connectCanButton = document.getElementById('connectCanButton'); // New button
+        const demoModeButton = document.getElementById('demoModeButton');
         const canDeviceNameElement = document.getElementById('canDeviceName'); // For device name	
 
         // Reflow dense tabs into a two-column layout on wide screens.
@@ -266,6 +267,7 @@
         // --- Global state for CAN connection ---
         let isCanDeviceFound = false;
         let isCanConnected = false;
+        let isDemoMode = false;
         let currentCanDeviceName = null;
 		
         // --- Data Storage (Add Controller Specific) ---
@@ -290,6 +292,232 @@
 		
 		const START_PULSE_MIN = 1;
 		const START_PULSE_MAX = 48 // Based on original input constraints
+
+		const DEMO_DEVICE_NAME = 'Demo CANable';
+
+		function cloneData(value) {
+			return value === null || value === undefined ? value : JSON.parse(JSON.stringify(value));
+		}
+
+		function buildDemoBytes(seed, length = 64) {
+			return Array.from({ length }, (_, index) => (seed + (index * 11)) & 0xFF);
+		}
+
+		function buildDemoAssistLevels(baseCurrent, baseSpeed) {
+			return Array.from({ length: 9 }, (_, index) => ({
+				current_limit: Math.max(15, Math.min(100, baseCurrent - (index * 4))),
+				speed_limit: Math.max(25, Math.min(100, baseSpeed + (index * 3))),
+			}));
+		}
+
+		function buildDemoAccelerationLevels() {
+			return Array.from({ length: 9 }, (_, index) => ({ acceleration_level: Math.min(8, index + 1) }));
+		}
+
+		function buildDemoRatioLevels() {
+			return Array.from({ length: 9 }, (_, index) => ({ assist_ratio_level: 30 + (index * 7) }));
+		}
+
+		function buildDemoTorqueProfiles() {
+			return Array.from({ length: 6 }, (_, index) => ({
+				start_torque_value: 12 + (index * 2),
+				max_torque_value: 42 + (index * 3),
+				return_torque_value: 8 + index,
+				min_current: 15 + index,
+				max_current: 70 - (index * 2),
+				start_pulse: Math.min(START_PULSE_MAX, 8 + (index * 6)),
+				current_decay_time: 120 + (index * 60),
+				torque_decay_time: 180 + (index * 45),
+				stop_delay: 18 + (index * 3),
+			}));
+		}
+
+		function createDemoState() {
+			const controllerP0 = {
+				par0_value_offset_0: 0,
+				acceleration_levels: buildDemoAccelerationLevels(),
+				assist_ratio_levels: buildDemoRatioLevels(),
+				assist_ratio_upper_limit: 120,
+				_rawBytes: buildDemoBytes(0x18),
+			};
+
+			const controllerP1 = {
+				system_voltage: 48,
+				current_limit: 18,
+				overvoltage: 60,
+				undervoltage: 39,
+				undervoltage_under_load: 41,
+				battery_recovery_voltage: 44,
+				battery_capacity: 15000,
+				max_current_on_low_charge: 10,
+				limp_mode_soc_limit: 15,
+				full_capacity_range: 95,
+				pedal_sensor_type: 0,
+				coaster_brake: false,
+				pedal_sensor_signals_per_rotation: 12,
+				speed_sensor_channel_number: 1,
+				check_teeth_for_heel_torque: 0,
+				motor_type: 1,
+				motor_pole_pair_number: 15,
+				speedmeter_magnets_number: 1,
+				temperature_sensor_type: 1,
+				deceleration_ratio: 2.5,
+				motor_max_rotor_rpm: 380,
+				throttle_start_voltage: 1.1,
+				throttle_max_voltage: 4.1,
+				speed_limit_enabled: 1,
+				start_current: 18,
+				assist_levels: buildDemoAssistLevels(95, 35),
+				displayless_mode: 0,
+				lamps_always_on: true,
+				walk_assist_speed: 4.5,
+				current_loading_time: 1.4,
+				current_shedding_time: 1.8,
+				_rawBytes: buildDemoBytes(0x2A),
+			};
+
+			const controllerP2 = {
+				acceleration_level: 5,
+				torque_profiles: buildDemoTorqueProfiles(),
+				_rawBytes: buildDemoBytes(0x44),
+			};
+
+			const speedParams = {
+				speed_limit: 25.0,
+				wheel_diameter: { text: '27.5″' },
+				circumference: 2190,
+				_rawBytes: buildDemoBytes(0x66, 8),
+			};
+
+			return {
+				displayData1: { total_mileage: 12450, single_mileage: 18.4, max_speed: 42.8 },
+				displayData2: { average_speed: 21.7, service_mileage: 850 },
+				displayRealtime: { assist_levels: 5, ride_mode: 'Eco', boost: true, current_assist_level_code: 3, light: false, button: false },
+				displayErrors: [],
+				displayShutdownTime: 10,
+				sensorRealtime: { torque: 68, cadence: 82 },
+				batteryCapacity: { full_capacity: 15000, capacity_left: 11200, rsoc: 74, asoc: 72, soh: 92 },
+				batteryState: { voltage: 52.6, current: 7.8, temperature: 28 },
+				batteryCells: { 0: 4.162, 1: 4.158, 2: 4.151, 3: 4.164, 4: 4.159, 5: 4.153, 6: 4.166, 7: 4.161 },
+				batteryOtherInfo: { hwVersion: '1.0', swVersion: '2.3.1', modelNumber: 'BMS-52V-15Ah', serialNumber: 'BM20260418' },
+				controllerRealtime0: { remaining_capacity: 74, remaining_distance: 42.5, single_trip: 12.8, cadence: 82, torque: 68 },
+				controllerRealtime1: { voltage: 52.6, temperature: 29, motor_temperature: 41, current: 7.9, speed: 24.3 },
+				controllerParams0: controllerP0,
+				controllerParams1: controllerP1,
+				controllerParams2: controllerP2,
+				controllerSpeedParams: speedParams,
+				lastStartupAngle: 36,
+				controllerOtherInfo: { hwVersion: 'v1.3', swVersion: '3.11.8', modelNumber: 'M620 48V', serialNumber: 'CN2026-0418', manufacturer: 'Bafang' },
+				displayOtherInfo: { hwVersion: 'v2.0', swVersion: '4.5.2', modelNumber: 'DPC-18', bootloaderVersion: '1.09', serialNumber: 'DSP20260418', manufacturer: 'Bafang', customerNumber: '001' },
+				sensorOtherInfo: { hwVersion: '1.1', swVersion: '1.8.0', modelNumber: 'T4-Torque', serialNumber: 'SN-TQ-20418' },
+				infoOther: {
+					controller: { hwVersion: 'v1.3', swVersion: '3.11.8', modelNumber: 'M620 48V', serialNumber: 'CN2026-0418', manufacturer: 'Bafang' },
+					display: { hwVersion: 'v2.0', swVersion: '4.5.2', modelNumber: 'DPC-18', bootloaderVersion: '1.09', serialNumber: 'DSP20260418', manufacturer: 'Bafang', customerNumber: '001' },
+					sensor: { hwVersion: '1.1', swVersion: '1.8.0', modelNumber: 'T4-Torque', serialNumber: 'SN-TQ-20418' },
+					battery: { hwVersion: '1.0', swVersion: '2.3.1', modelNumber: 'BMS-52V-15Ah', serialNumber: 'BM20260418' },
+				},
+				rawParamData: {
+					controller_params_0: controllerP0._rawBytes,
+					controller_params_1: controllerP1._rawBytes,
+					controller_params_2: controllerP2._rawBytes,
+					controller_params_6017: buildDemoBytes(0x88),
+					controller_params_6018: buildDemoBytes(0x99),
+					controller_speed_params: speedParams._rawBytes,
+				},
+			};
+		}
+
+		function sendCommand(command, demoMessage = null) {
+			if (isDemoMode) {
+				addLog('INFO', demoMessage || `Demo mode: skipped ${command}`);
+				return true;
+			}
+
+			if (socket.readyState === WebSocket.OPEN) {
+				socket.send(command);
+				return true;
+			}
+
+			addLog('ERROR', 'WebSocket not open.');
+			return false;
+		}
+
+		function applyDemoState() {
+			const demo = createDemoState();
+
+			displayData1 = cloneData(demo.displayData1);
+			displayData2 = cloneData(demo.displayData2);
+			displayRealtime = cloneData(demo.displayRealtime);
+			displayErrors = cloneData(demo.displayErrors);
+			displayShutdownTime = demo.displayShutdownTime;
+			sensorRealtime = cloneData(demo.sensorRealtime);
+			batteryCapacity = cloneData(demo.batteryCapacity);
+			batteryState = cloneData(demo.batteryState);
+			batteryCells = cloneData(demo.batteryCells);
+			batteryOtherInfo = cloneData(demo.batteryOtherInfo);
+			controllerRealtime0 = cloneData(demo.controllerRealtime0);
+			controllerRealtime1 = cloneData(demo.controllerRealtime1);
+			controllerParams0 = cloneData(demo.controllerParams0);
+			controllerParams1 = cloneData(demo.controllerParams1);
+			controllerParams2 = cloneData(demo.controllerParams2);
+			controllerSpeedParams = cloneData(demo.controllerSpeedParams);
+			lastControllerP0 = cloneData(demo.controllerParams0);
+			lastControllerP1 = cloneData(demo.controllerParams1);
+			lastControllerP2 = cloneData(demo.controllerParams2);
+			lastStartupAngle = demo.lastStartupAngle;
+			controllerOtherInfo = cloneData(demo.controllerOtherInfo);
+			displayOtherInfo = cloneData(demo.displayOtherInfo);
+			sensorOtherInfo = cloneData(demo.sensorOtherInfo);
+
+			rawParamData = cloneData(demo.rawParamData);
+			currentRawParamType = 'controller_params_1';
+		}
+
+		function refreshAllUi() {
+			updateDisplayUI();
+			updateSensorUI();
+			updateBatteryUI();
+			updateControllerUI();
+			updateGearsUI();
+			updateGearsUIM820();
+			updateInfoUI();
+			populateHexEditor();
+			updatePasCurvesChart();
+			updateStartRampChart();
+			updatePasCurvesChartM820();
+			updateStartRampChartM820();
+		}
+
+		function setDemoMode(active) {
+			if (active) {
+				isDemoMode = true;
+				isCanDeviceFound = true;
+				isCanConnected = false;
+				currentCanDeviceName = DEMO_DEVICE_NAME;
+				applyDemoState();
+				statusIndicator.classList.remove('connected', 'found');
+				statusIndicator.classList.add('demo');
+				statusIndicator.style.backgroundColor = '';
+				statusText.textContent = 'Demo mode';
+				canDeviceNameElement.textContent = `Device: ${DEMO_DEVICE_NAME}`;
+				connectCanButton.textContent = 'Connect';
+				connectCanButton.disabled = true;
+				if (demoModeButton) {
+					demoModeButton.dataset.active = 'true';
+					demoModeButton.textContent = 'Demo mode';
+				}
+				enableAppControls(true);
+				refreshAllUi();
+				addLog('STATUS', 'Demo mode enabled with fake data.');
+				return;
+			}
+
+			isDemoMode = false;
+			if (demoModeButton) {
+				demoModeButton.dataset.active = 'false';
+				demoModeButton.textContent = 'Demo mode';
+			}
+		}
 		
 		// --- Chart instances (initialize to null) ---
 		let pasChart = null;
@@ -628,7 +856,12 @@
             }
         }
 
-        function enableControls(enable) { allControls.forEach(ctrl => ctrl.disabled = !enable); }
+		function enableControls(enable) {
+			allControls.forEach(ctrl => {
+				if (ctrl.id === 'demoModeButton') return;
+				ctrl.disabled = !enable;
+			});
+		}
 		
 		function updateStatus(connected, message = '') {
 			console.log(`updateStatus called: connected=${connected}, message="${message}"`); // <-- ADD THIS
@@ -2121,16 +2354,18 @@
         socket.onopen = () => {
             addLog('STATUS', 'WebSocket connection opened.');
             // Request initial CAN device status when WebSocket connects
-            socket.send('GET_CAN_INTERFACE_STATUS');
+            sendCommand('GET_CAN_INTERFACE_STATUS', 'Demo mode: skipped initial CAN status request.');
         };
         // socket.onclose and socket.onerror remain largely the same, but ensure UI reflects WebSocket disconnect
         socket.onclose = () => {
+            if (isDemoMode) return;
             updateCanInterfaceDisplay('DEVICE_NOT_FOUND'); // This sets indicator to red, button disabled.
             statusText.textContent = 'Disconnected (WebSocket Closed)'; // More specific message
             canDeviceNameElement.textContent = 'Connection to server lost.';
             addLog('STATUS', 'WebSocket connection closed.');
         };
         socket.onerror = (error) => {
+            if (isDemoMode) return;
             console.error("WebSocket Error:", error);
             updateCanInterfaceDisplay('DEVICE_NOT_FOUND');
             statusText.textContent = `Disconnected (WebSocket Error: ${error.message || 'Unknown'})`;
@@ -2142,6 +2377,7 @@
 
         socket.onmessage = (event) => {
 			//console.log("RAW WS MESSAGE:", event.data);
+            if (isDemoMode) return;
             const message = event.data;
 			let needsDisplayUpdate = false;
             let needsSensorUpdate = false;
@@ -2438,31 +2674,38 @@
 
        // --- Connect/Disconnect Button Listener ---
         connectCanButton.addEventListener('click', () => {
+            if (isDemoMode) {
+                addLog('INFO', 'Demo mode is active. Use the demo data without connecting.');
+                return;
+            }
             if (isCanConnected) { // If currently connected, the button means "Disconnect"
-                socket.send('DISCONNECT_CAN');
+                sendCommand('DISCONNECT_CAN', 'Demo mode: skipped disconnect request.');
                 updateCanInterfaceDisplay('DISCONNECTING', currentCanDeviceName); // Optimistic UI update
             } else if (isCanDeviceFound) { // If device found but not connected, button means "Connect"
-                socket.send('CONNECT_CAN');
+                sendCommand('CONNECT_CAN', 'Demo mode: skipped connect request.');
                 updateCanInterfaceDisplay('CONNECTING', currentCanDeviceName); // Optimistic UI update
             } else {
                 // Should not happen if button is disabled correctly, but as a fallback:
                 addLog('INFO', 'Attempted to connect but no CAN device found.');
-                socket.send('GET_CAN_INTERFACE_STATUS'); // Re-check device status
+                sendCommand('GET_CAN_INTERFACE_STATUS', 'Demo mode: skipped CAN status request.'); // Re-check device status
             }
         });
+
+		if (demoModeButton) {
+			demoModeButton.addEventListener('click', () => setDemoMode(true));
+		}
 		
         clearLogButton.onclick = () => { log.innerHTML = ''; addLog('INFO', 'Log cleared.'); };
 		
         document.querySelectorAll('.read-controls button').forEach(button => {
             button.onclick = () => {
                 const command = button.getAttribute('data-command');
-                if (command && socket.readyState === WebSocket.OPEN) { socket.send(command); addLog('REQ', `${button.textContent} initiated`); }
+                if (command && sendCommand(command, `Demo mode: skipped ${button.textContent}.`)) { addLog('REQ', `${button.textContent} initiated`); }
                 else if (!command) { addLog('ERROR', 'Button missing data-command.'); }
-                else { addLog('ERROR', 'WebSocket not open.'); }
             };
         });
-        
-		document.getElementById('sendCustomFrame').onclick = () => { const id = canIdInput.value.trim(); const data = canDataInput.value.trim().replace(/\s/g, ''); if (!id) { alert('CAN ID required.'); return; } if (!/^[0-9a-fA-F]+$/.test(id)) { alert('CAN ID must be hex.'); return; } if (data && !/^[0-9a-fA-F]*$/.test(data)) { alert('Data must be hex.'); return; } if (data.length % 2 !== 0) { alert('Data hex must have even length.'); return; } if (data.length > 16) { alert('Data length max 8 bytes.'); return; } const command = `${id}#${data}`; socket.send(command); };
+		
+		document.getElementById('sendCustomFrame').onclick = () => { const id = canIdInput.value.trim(); const data = canDataInput.value.trim().replace(/\s/g, ''); if (!id) { alert('CAN ID required.'); return; } if (!/^[0-9a-fA-F]+$/.test(id)) { alert('CAN ID must be hex.'); return; } if (data && !/^[0-9a-fA-F]*$/.test(data)) { alert('Data must be hex.'); return; } if (data.length % 2 !== 0) { alert('Data hex must have even length.'); return; } if (data.length > 16) { alert('Data length max 8 bytes.'); return; } const command = `${id}#${data}`; sendCommand(command, 'Demo mode: skipped custom frame.'); };
 
 		if (debugElements.rawParamSelect) {
 			debugElements.rawParamSelect.addEventListener('change', (event) => {
@@ -2491,16 +2734,21 @@
 						addLog('ERROR', `Unknown raw parameter type for sync: ${currentRawParamType}`);
 						return;
 				}
-				if (socket.readyState === WebSocket.OPEN) {
-					socket.send(readCommand);
-				} else {
-					addLog('ERROR', 'WebSocket not open for raw param sync.');
-				}
+			if (isDemoMode || socket.readyState === WebSocket.OPEN) {
+				sendCommand(readCommand, `Demo mode: skipped raw sync for ${currentRawParamType}.`);
+			} else {
+				addLog('ERROR', 'WebSocket not open for raw param sync.');
+			}
 			};
 		}
 
 		if (debugElements.rawParamSaveButton) {
 			debugElements.rawParamSaveButton.onclick = () => {
+				if (isDemoMode) {
+					addLog('INFO', `Demo mode: raw save skipped for ${currentRawParamType || 'unknown block'}.`);
+					return;
+				}
+
 				if (!currentRawParamType || !rawParamData[currentRawParamType]) {
 					alert('Please select a parameter block and ensure data is loaded before saving.');
 					return;
@@ -2570,19 +2818,21 @@
 						return;
 				}
 
-				if (socket.readyState === WebSocket.OPEN) {
-					try {
-						socket.send(commandToSend);
+			if (isDemoMode || socket.readyState === WebSocket.OPEN) {
+				try {
+					sendCommand(commandToSend, `Demo mode: skipped raw save for ${currentRawParamType}.`);
+					if (!isDemoMode) {
 						// Log the first few bytes to confirm checksum inclusion if it's a long param
 						const logDataPreview = bytesToSend.slice(0, 5).map(b => '0x'+b.toString(16)).join(',') +
-											   (bytesToSend.length > 5 ? `... (checksum: 0x${bytesToSend[63]?.toString(16)})` : '');
+									   (bytesToSend.length > 5 ? `... (checksum: 0x${bytesToSend[63]?.toString(16)})` : '');
 						addLog('INFO', `Raw data command for ${currentRawParamType} sent to server. Data preview: [${logDataPreview}]`);
-					} catch (e) {
-						addLog('ERROR', `Failed to send raw data command for ${currentRawParamType}: ${e.message}`);
 					}
-				} else {
-					addLog('ERROR', 'WebSocket not open for raw param save.');
+				} catch (e) {
+					addLog('ERROR', `Failed to send raw data command for ${currentRawParamType}: ${e.message}`);
 				}
+			} else {
+				addLog('ERROR', 'WebSocket not open for raw param save.');
+			}
 			};
 		}
 		
@@ -2590,12 +2840,17 @@
             addLog('REQ', 'Syncing all Controller data...');
             //socket.send('READ:2:50:0'); // Realtime 0
             //socket.send('READ:2:50:1'); // Realtime 1
-            socket.send('READ:2:96:17'); // Parameter 1
+            sendCommand('READ:2:96:17', 'Demo mode: skipped controller sync.'); // Parameter 1
             //socket.send('READ:2:96:18'); // Parameter 2
-            socket.send('READ:2:50:3'); // Speed Params
+            sendCommand('READ:2:50:3', 'Demo mode: skipped speed sync.'); // Speed Params
         };
 
         controllerElements.saveButton.onclick = () => {
+            if (isDemoMode) {
+                addLog('INFO', 'Demo mode: controller save skipped.');
+                return;
+            }
+
             if (!confirm("Are you sure you want to write changes to the Controller?")) return;
             addLog('SAVE_REQ', 'Saving Controller Changes...');
             let changesMade = false;
@@ -2681,7 +2936,7 @@
                     if (p1ToSend.system_voltage === undefined && controllerParams1.system_voltage !== undefined) {
                         p1ToSend.system_voltage = controllerParams1.system_voltage;
                     }
-                    socket.send(`WRITE_LONG_P1:${JSON.stringify(p1ToSend)}`);
+                    sendCommand(`WRITE_LONG_P1:${JSON.stringify(p1ToSend)}`, 'Demo mode: skipped controller P1 save.');
                     addLog('SAVE_REQ', 'Controller Parameter 1');
                     changesMade = true;
                 }
@@ -2741,7 +2996,7 @@
 
                     // Check if essential parts are there before sending
                     if (speedToSend.wheel_diameter && typeof speedToSend.circumference === 'number' && typeof speedToSend.speed_limit === 'number') {
-                        socket.send(`WRITE_LONG_SPEED:${JSON.stringify(speedToSend)}`);
+                        sendCommand(`WRITE_LONG_SPEED:${JSON.stringify(speedToSend)}`, 'Demo mode: skipped controller speed save.');
                         addLog('SAVE_REQ', 'Controller Speed Params (via WRITE_LONG_SPEED)');
                         changesMade = true;
                     } else {
@@ -2765,23 +3020,28 @@
              if (confirm("WARNING: Motor will spin!\n\nEnsure chain is removed and bike is secure.\n\nProceed with Position Sensor Calibration?")) {
                  // Target: 2 (Controller), Cmd: 98 (0x62), SubCmd: 0 (0x00)
                  // Data: 5 zero bytes [00, 00, 00, 00, 00]
-                 socket.send("WRITE_SHORT:2:98:0:0000000000");
-                 addLog('SAVE_REQ', 'Calibrate Position Sensor');
-             }
-        };
+                  sendCommand("WRITE_SHORT:2:98:0:0000000000", 'Demo mode: skipped calibration command.');
+                  addLog('SAVE_REQ', 'Calibrate Position Sensor');
+              }
+         };
 		
         displayElements.syncButton.onclick = () => {
             addLog('REQ', 'Syncing all Display data...');
             //Send read requests for all display parameters
-            socket.send('READ:3:96:7'); // Errors
+            sendCommand('READ:3:96:7', 'Demo mode: skipped display sync.'); // Errors
             //socket.send('READ:3:99:0'); // Realtime
-            socket.send('READ:3:99:1'); // Data1
-            socket.send('READ:3:99:2'); // Data2
+            sendCommand('READ:3:99:1', 'Demo mode: skipped display sync.'); // Data1
+            sendCommand('READ:3:99:2', 'Demo mode: skipped display sync.'); // Data2
 			//socket.send('READ:3:99:3'); // Auto Shutdown Time
 
         };
 
         displayElements.saveButton.onclick = () => {
+            if (isDemoMode) {
+                addLog('INFO', 'Demo mode: display save skipped.');
+                return;
+            }
+
             if (!confirm("Are you sure you want to write changes to the Display?")) return;
             addLog('SAVE_REQ', 'Saving Display Changes...');
             let changesMade = false;
@@ -2792,17 +3052,17 @@
             if (newTotalStr !== "") {
                  const newTotal = parseInt(newTotalStr, 10);
                  if (!isNaN(newTotal) && newTotal !== Math.round(displayData1?.total_mileage)) {
-                     socket.send(`WRITE_DISP_TOTAL_MILEAGE:${newTotal}`);
-                     addLog('SAVE_REQ', `Display Total Mileage: ${newTotal}`);
-                     changesMade = true;
+                      sendCommand(`WRITE_DISP_TOTAL_MILEAGE:${newTotal}`, 'Demo mode: skipped display total mileage save.');
+                      addLog('SAVE_REQ', `Display Total Mileage: ${newTotal}`);
+                      changesMade = true;
                  } else if (isNaN(newTotal)) { addLog('ERROR', 'Invalid Total Mileage input.');}
             }
              if (newSingleStr !== "") {
                   const newSingle = parseFloat(newSingleStr);
                   if (!isNaN(newSingle) && newSingle.toFixed(1) !== displayData1?.single_mileage?.toFixed(1)) {
-                      socket.send(`WRITE_DISP_SINGLE_MILEAGE:${newSingle}`);
-                      addLog('SAVE_REQ', `Display Single Mileage: ${newSingle}`);
-                      changesMade = true;
+                       sendCommand(`WRITE_DISP_SINGLE_MILEAGE:${newSingle}`, 'Demo mode: skipped display single mileage save.');
+                       addLog('SAVE_REQ', `Display Single Mileage: ${newSingle}`);
+                       changesMade = true;
                   } else if (isNaN(newSingle)) { addLog('ERROR', 'Invalid Single Mileage input.');}
              }
 			 
@@ -2821,57 +3081,61 @@
             alert("Invalid threshold. Please enter a non-negative number.");
             return;
         }
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(`SET_AND_CLEAN_SERVICE_MILEAGE:${thresholdKm}`);
-            logToConsole(`UI: Sent SET_AND_CLEAN_SERVICE_MILEAGE:${thresholdKm}`);
+        if (sendCommand(`SET_AND_CLEAN_SERVICE_MILEAGE:${thresholdKm}`, 'Demo mode: skipped service mileage reset.')) {
+            addLog('INFO', `Service mileage reset requested: ${thresholdKm} km`);
         } else {
-            logToConsole("UI Error: WebSocket not connected.");
+            addLog('ERROR', 'WebSocket not connected.');
         }
         };
 
         displayElements.setTimeButton.onclick = () => {
              if (confirm("Are you sure you want to set the display clock to the current time?")) {
                  const now = new Date(); const h = now.getHours(); const m = now.getMinutes(); const s = now.getSeconds();
-                 socket.send(`WRITE_DISP_TIME:${h},${m},${s}`);
-                 addLog('SAVE_REQ', 'Display Time (Now)');
-             }
-        };
+                  sendCommand(`WRITE_DISP_TIME:${h},${m},${s}`, 'Demo mode: skipped display time save.');
+                  addLog('SAVE_REQ', 'Display Time (Now)');
+              }
+         };
 
         // --- Sensor Tab Specific Button Listeners ---
         sensorElements.syncButton.onclick = () => {
             addLog('REQ', 'Syncing all Sensor data...');
-            socket.send('READ:1:49:0'); // Realtime
+			sendCommand('READ:1:49:0', 'Demo mode: skipped sensor sync.'); // Realtime
 		    };
 
         // --- Battery Tab Specific Button Listeners ---
         batteryElements.syncButton.onclick = () => {
              addLog('REQ', 'Syncing all Battery data...');
-             socket.send('READ:4:52:0'); // Capacity
-             socket.send('READ:4:52:1'); // State
+             sendCommand('READ:4:52:0', 'Demo mode: skipped battery sync.'); // Capacity
+             sendCommand('READ:4:52:1', 'Demo mode: skipped battery sync.'); // State
              // Send requests for all cell groups
-             socket.send('READ:4:100:2'); // Cells 0-3
-             socket.send('READ:4:100:3'); // Cells 4-7
-             socket.send('READ:4:100:4'); // Cells 8-11
-             socket.send('READ:4:100:5'); // Cells 12-15
+             sendCommand('READ:4:100:2', 'Demo mode: skipped battery sync.'); // Cells 0-3
+             sendCommand('READ:4:100:3', 'Demo mode: skipped battery sync.'); // Cells 4-7
+             sendCommand('READ:4:100:4', 'Demo mode: skipped battery sync.'); // Cells 8-11
+             sendCommand('READ:4:100:5', 'Demo mode: skipped battery sync.'); // Cells 12-15
         };
 		
 	   // --- Gears Tab Specific Button Listeners ---
 		gearsElements.syncButton.onclick = () => {
           addLog('REQ', 'Syncing Gears data ...');
-		  socket.send('READ:2:96:16'); // Request Controller P0
-          socket.send('READ:2:96:17'); // Request Controller P1
-          socket.send('READ:2:96:18'); // Request Controller P2
-		  socket.send('READ_STARTUP_ANGLE'); //startup angle
+		  sendCommand('READ:2:96:16', 'Demo mode: skipped gears sync.'); // Request Controller P0
+          sendCommand('READ:2:96:17', 'Demo mode: skipped gears sync.'); // Request Controller P1
+          sendCommand('READ:2:96:18', 'Demo mode: skipped gears sync.'); // Request Controller P2
+		  sendCommand('READ_STARTUP_ANGLE', 'Demo mode: skipped startup angle sync.'); //startup angle
 		};
 
         gearsElementsM820.syncButton.onclick = () => {
           addLog('REQ', 'Syncing Gears data ...');
-          socket.send('READ:2:96:17'); // Request Controller P1
-          socket.send('READ:2:96:18'); // Request Controller P2
-		  socket.send('READ_STARTUP_ANGLE'); //startup angle
+          sendCommand('READ:2:96:17', 'Demo mode: skipped M820 gears sync.'); // Request Controller P1
+          sendCommand('READ:2:96:18', 'Demo mode: skipped M820 gears sync.'); // Request Controller P2
+		  sendCommand('READ_STARTUP_ANGLE', 'Demo mode: skipped startup angle sync.'); //startup angle
 		};
 
-      gearsElements.saveButton.onclick = async () => { 
+        gearsElements.saveButton.onclick = async () => { 
+			if (isDemoMode) {
+				addLog('INFO', 'Demo mode: gears save skipped.');
+				return;
+			}
+
 		  
 		    const angleStr = gearsElements.controllerStartupAngleInputEl?.value;
             const angleValue = (angleStr !== undefined && angleStr !== "") ? parseInt(angleStr, 10) : null;
@@ -2898,7 +3162,7 @@
 		    // Send P0 (acceleration  Levels) - Use the locally modified object
             if (lastControllerP0) { // Check again just in case, though covered above
                 // We send the whole P1 block because the user might have edited values via the table inputs
-                socket.send(`WRITE_LONG_P0:${JSON.stringify(lastControllerP0)}`);
+                sendCommand(`WRITE_LONG_P0:${JSON.stringify(lastControllerP0)}`, 'Demo mode: skipped controller P0 save.');
                 addLog('SAVE_REQ', 'Controller Parameter 0 (Acceleration Levels)');
                 changesMade = true;
 				await new Promise(resolve => setTimeout(resolve, 500)); // Wait
@@ -2907,7 +3171,7 @@
             // Send P1 (Assist Levels) - Use the locally modified object
             if (lastControllerP1) { // Check again just in case, though covered above
                 // We send the whole P1 block because the user might have edited values via the table inputs
-                socket.send(`WRITE_LONG_P1:${JSON.stringify(lastControllerP1)}`);
+                sendCommand(`WRITE_LONG_P1:${JSON.stringify(lastControllerP1)}`, 'Demo mode: skipped controller P1 save.');
                 addLog('SAVE_REQ', 'Controller Parameter 1 (Assist Levels)');
                 changesMade = true;
 				await new Promise(resolve => setTimeout(resolve, 500)); // Wait
@@ -2917,14 +3181,14 @@
             // Send P2 (Torque Profiles) - Use the locally modified object
             if (lastControllerP2) { // Check again just in case
                 // We send the whole P2 block
-                socket.send(`WRITE_LONG_P2:${JSON.stringify(lastControllerP2)}`);
+                sendCommand(`WRITE_LONG_P2:${JSON.stringify(lastControllerP2)}`, 'Demo mode: skipped controller P2 save.');
                 addLog('SAVE_REQ', 'Controller Parameter 2 (Torque Profiles)');
                 changesMade = true;
 				await new Promise(resolve => setTimeout(resolve, 500)); // Wait
             }
 			
           if (angleIsValid && angleValue !== lastStartupAngle) { // Only send if valid AND changed
-                socket.send(`WRITE_STARTUP_ANGLE:${angleValue}`);
+                sendCommand(`WRITE_STARTUP_ANGLE:${angleValue}`, 'Demo mode: skipped startup angle save.');
                 addLog('SAVE_REQ', `Startup Angle: ${angleValue}`);
                 changesMade = true;
             } else if (angleIsValid && angleValue === lastStartupAngle) {
@@ -2940,6 +3204,11 @@
         };
 
         gearsElementsM820.saveButton.onclick = async () => { 
+			if (isDemoMode) {
+				addLog('INFO', 'Demo mode: M820 gears save skipped.');
+				return;
+			}
+
 		  
 		    const angleStr = gearsElementsM820.controllerStartupAngleInputEl?.value;
             const angleValue = (angleStr !== undefined && angleStr !== "") ? parseInt(angleStr, 10) : null;
@@ -2965,7 +3234,7 @@
             // Send P1 (Assist Levels) - Use the locally modified object
             if (lastControllerP1) { // Check again just in case, though covered above
                 // We send the whole P1 block because the user might have edited values via the table inputs
-                socket.send(`WRITE_LONG_P1:${JSON.stringify(lastControllerP1)}`);
+                sendCommand(`WRITE_LONG_P1:${JSON.stringify(lastControllerP1)}`, 'Demo mode: skipped M820 controller P1 save.');
                 addLog('SAVE_REQ', 'Controller Parameter 1 (Assist Levels)');
                 changesMade = true;
 				await new Promise(resolve => setTimeout(resolve, 500)); // Wait
@@ -2981,14 +3250,14 @@
                 if (globalAccelerationIsValid){
                     lastControllerP2.acceleration_level = globalAccelerationValue;
                 }
-                socket.send(`WRITE_LONG_P2:${JSON.stringify(lastControllerP2)}`);
+                sendCommand(`WRITE_LONG_P2:${JSON.stringify(lastControllerP2)}`, 'Demo mode: skipped M820 controller P2 save.');
                 addLog('SAVE_REQ', 'Controller Parameter 2 (Torque Profiles)');
                 changesMade = true;
 				await new Promise(resolve => setTimeout(resolve, 500)); // Wait
             }
 			
             if (angleIsValid && angleValue !== lastStartupAngle) { // Only send if valid AND changed
-                socket.send(`WRITE_STARTUP_ANGLE:${angleValue}`);
+                sendCommand(`WRITE_STARTUP_ANGLE:${angleValue}`, 'Demo mode: skipped startup angle save.');
                 addLog('SAVE_REQ', `Startup Angle: ${angleValue}`);
                 changesMade = true;
             } else if (angleIsValid && angleValue === lastStartupAngle) {
@@ -3008,21 +3277,26 @@
              addLog('REQ', 'Syncing all Device Info...');
              // Send all info read commands (same as before)
              // Controller
-             socket.send('READ:2:96:0'); socket.send('READ:2:96:1'); socket.send('READ:2:96:3');
-             socket.send('READ:2:96:2'); socket.send('READ:2:96:5');
-             // Display
-             socket.send('READ:3:96:0'); socket.send('READ:3:96:1'); socket.send('READ:3:96:3');
-             socket.send('READ:3:96:8'); socket.send('READ:3:96:5'); socket.send('READ:3:96:4');
-             socket.send('READ:3:96:2');
-             // Sensor
-             socket.send('READ:1:96:0'); socket.send('READ:1:96:1'); socket.send('READ:1:96:3');
-             socket.send('READ:1:96:2');
-             // Battery
-             socket.send('READ:4:96:0'); socket.send('READ:4:96:1'); socket.send('READ:4:96:3');
-             socket.send('READ:4:96:2');
+              sendCommand('READ:2:96:0', 'Demo mode: skipped info sync.'); sendCommand('READ:2:96:1', 'Demo mode: skipped info sync.'); sendCommand('READ:2:96:3', 'Demo mode: skipped info sync.');
+              sendCommand('READ:2:96:2', 'Demo mode: skipped info sync.'); sendCommand('READ:2:96:5', 'Demo mode: skipped info sync.');
+              // Display
+              sendCommand('READ:3:96:0', 'Demo mode: skipped info sync.'); sendCommand('READ:3:96:1', 'Demo mode: skipped info sync.'); sendCommand('READ:3:96:3', 'Demo mode: skipped info sync.');
+              sendCommand('READ:3:96:8', 'Demo mode: skipped info sync.'); sendCommand('READ:3:96:5', 'Demo mode: skipped info sync.'); sendCommand('READ:3:96:4', 'Demo mode: skipped info sync.');
+              sendCommand('READ:3:96:2', 'Demo mode: skipped info sync.');
+              // Sensor
+              sendCommand('READ:1:96:0', 'Demo mode: skipped info sync.'); sendCommand('READ:1:96:1', 'Demo mode: skipped info sync.'); sendCommand('READ:1:96:3', 'Demo mode: skipped info sync.');
+              sendCommand('READ:1:96:2', 'Demo mode: skipped info sync.');
+              // Battery
+              sendCommand('READ:4:96:0', 'Demo mode: skipped info sync.'); sendCommand('READ:4:96:1', 'Demo mode: skipped info sync.'); sendCommand('READ:4:96:3', 'Demo mode: skipped info sync.');
+              sendCommand('READ:4:96:2', 'Demo mode: skipped info sync.');
         };
 
         infoElements.saveButton.onclick = () => {
+            if (isDemoMode) {
+                addLog('INFO', 'Demo mode: device info save skipped.');
+                return;
+            }
+
             if (!confirm("Are you sure you want to save changes to device information?")) return;
             addLog('SAVE_REQ', 'Saving Device Info Changes...');
             let changesMade = false;
@@ -3031,7 +3305,7 @@
             const newCtrlMfg = infoElements.ctrlMfgInput.value;
             if (newCtrlMfg !== "" && newCtrlMfg !== controllerOtherInfo.manufacturer) {
                 // Target: 2 (Controller), Cmd: 96 (0x60), SubCmd: 5 (0x05)
-                socket.send(`WRITE_LONG_STRING:2:96:5:${newCtrlMfg}`);
+                sendCommand(`WRITE_LONG_STRING:2:96:5:${newCtrlMfg}`, 'Demo mode: skipped controller manufacturer save.');
                 addLog('SAVE_REQ', `Controller Manufacturer: ${newCtrlMfg}`);
                 changesMade = true;
             }
@@ -3040,7 +3314,7 @@
             const newDisplayMfg = infoElements.displayMfgInput.value;
             if (newDisplayMfg !== "" && newDisplayMfg !== displayOtherInfo.manufacturer) {
                 // Target: 3 (Display), Cmd: 96 (0x60), SubCmd: 5 (0x05)
-                socket.send(`WRITE_LONG_STRING:3:96:5:${newDisplayMfg}`);
+                sendCommand(`WRITE_LONG_STRING:3:96:5:${newDisplayMfg}`, 'Demo mode: skipped display manufacturer save.');
                 addLog('SAVE_REQ', `Display Manufacturer: ${newDisplayMfg}`);
                 changesMade = true;
             }
@@ -3049,7 +3323,7 @@
             const newDisplayCn = infoElements.displayCnInput.value;
             if (newDisplayCn !== "" && newDisplayCn !== displayOtherInfo.customerNumber) {
                 // Target: 3 (Display), Cmd: 96 (0x60), SubCmd: 4 (0x04)
-                socket.send(`WRITE_LONG_STRING:3:96:4:${newDisplayCn}`);
+                sendCommand(`WRITE_LONG_STRING:3:96:4:${newDisplayCn}`, 'Demo mode: skipped display customer number save.');
                 addLog('SAVE_REQ', `Display Customer Number: ${newDisplayCn}`);
                 changesMade = true;
             }
@@ -3061,11 +3335,12 @@
             }
         };
 		
-        // --- Initial State ---
+		// --- Initial State ---
 		populateWheelSelect(); // Populate dropdown on load
         //updateStatus(false);
         switchTab('controller'); // Start on Controller tab
 		populateHexEditor();
+        if (demoModeButton) demoModeButton.dataset.active = 'false';
         updateCanInterfaceDisplay('DEVICE_NOT_FOUND'); // Set initial UI state to "Disconnected, No Device"
         statusText.textContent = "Connecting to server..."; // Initial text before WebSocket open	
 		updatePasCurvesChart(); // Initial call to draw empty or placeholder chart

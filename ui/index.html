@@ -13,17 +13,18 @@
         <!-- Status Card -->
 		<div class="card">
             <!-- Use a flex container for horizontal alignment -->
-            <div class="status-container" style="display: flex; align-items: center; justify-content: space-between; gap: 15px;">
+			<div class="status-container" style="display: flex; align-items: center; justify-content: space-between; gap: 15px;">
                 <!-- Left part: Indicator and Text -->
                 <div class="status" style="display: flex; align-items: center; gap: 10px; flex-grow: 1;">
                     <div id="statusIndicator" class="status-indicator"></div>
                     <span id="statusText">Disconnected</span> <!-- Default text -->
                 </div>
-                <!-- Right part: Button -->
-                <div class="status-controls">
-                     <button id="connectCanButton" disabled style="padding: 6px 12px; font-size: 13px;">Connect</button>
-                </div>
-            </div>
+				<!-- Right part: Button -->
+				<div class="status-controls">
+	                     <button id="connectCanButton" disabled style="padding: 6px 12px; font-size: 13px;">Connect</button>
+	                     <button id="demoModeButton" style="padding: 6px 12px; font-size: 13px;">Demo mode</button>
+	                </div>
+	            </div>
 			<div id="canDeviceName" style="font-size: 0.9em; color: #6c757d; margin-top: 5px; text-align: center;">
                 <!-- Device name will be shown here -->
             </div>
