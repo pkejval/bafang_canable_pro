@@ -72,9 +72,10 @@ jobs:
         run: npm ci
 
       - name: Create output directory
+        shell: bash
         env:
           DIST_DIR: dist/${{ matrix.commit }}
-        run: node -e "require('fs').mkdirSync(process.env.DIST_DIR, { recursive: true })"
+        run: mkdir -p "$DIST_DIR"
 
       - name: Build executable
         run: npx --yes @yao-pkg/pkg@latest server.js --targets ${{ matrix.target }} --output dist/${{ matrix.commit }}/${{ matrix.binary }}
